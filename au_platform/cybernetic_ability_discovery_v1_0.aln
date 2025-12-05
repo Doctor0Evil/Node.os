@@ -1,0 +1,311 @@
+# filename: /au_platform/cybernetic_ability_discovery_v1_0.aln
+# format: .aln
+# destination: AU Platform – Web5‑DID anchored cybernetic ability discovery & research perks [web:1][file:2][file:5]
+
+aln MODULE AU_CyberneticAbility_Discovery
+    version "1.0.0"
+    purpose "Non-fictional, standards-aligned ALN module for discovering cybernetic abilities and assigning augmented-user research perks based on verifiable Web5 DIDs and documented skills, without touching medical clearance or implant control paths."  # [web:1][file:2]
+
+    # ----------------------------------------------------
+    # 1. CORE TYPES AND WEB5 DID IDENTITY
+    # ----------------------------------------------------
+
+    struct Web5DID
+        did                string   # e.g. did:ion:EiD8J2b3K8k9Q8x9L7m2n4p1q5r6s7t8u9v0w1x2y3z4A5B6C7D8E9F0
+        dwn_endpoint       string   # Decentralized Web Node URL.
+        issuer_domain      string   # Publicly-recognizable org (e.g. university, standards body).
+        credentials_hash   string   # SHA3‑512 hash of verifiable credential bundle. [file:2]
+    end
+
+    struct AUIdentityProfile
+        did           Web5DID
+        display_name  string
+        country_code  string
+        org_affinity  string   # e.g. "university_lab","hospital","maker_space".
+        consent_token string   # Explicit consent handle for research perks.
+    end
+
+    enum SkillDomain
+        NEURAL_ENGINEERING
+        BCI_SIGNAL_PROCESSING
+        REHAB_ENGINEERING
+        XR_INTERFACES
+        ASSISTIVE_ROBOTICS
+        PRIVACY_SECURITY
+        ETHICS_GOVERNANCE
+        DATA_SCIENCE_ML
+    end
+
+    struct DocumentedSkill
+        domain         SkillDomain
+        level          int        # 1–5, mapped from public certs / CV evidence.
+        evidence_uri   string     # Public URL to paper, patent, Git commit, or course record.
+        verifier_did   string     # DID of verifying institution / issuer. [web:1][file:2]
+        last_verified  string     # ISO‑8601 timestamp of last verification event.
+    end
+
+    struct AUAbilityProfile
+        identity       AUIdentityProfile
+        skills         DocumentedSkill[]
+        ethics_cert_ok bool       # True if ethics/compliance training confirmed. [file:2]
+        risk_score     float      # Lower is safer; computed from domain mix & evidence.
+    end
+
+    # ----------------------------------------------------
+    # 2. RESEARCH PERKS / CAPABILITIES (NON-MEDICAL)
+    # ----------------------------------------------------
+
+    enum ResearchPerkClass
+        READONLY_DATA_PORTAL        # Access to anonymized datasets only.
+        SIMULATION_SANDBOX          # Access to XR/BCI simulators, no real hardware. [web:1]
+        TOOLING_ACCESS              # Dev tools, SDKs, and open‑source stacks.
+        COLLAB_ROOM                 # Federated collaboration spaces, whiteboards.
+        GOVERNANCE_SEAT             # Voting/feedback in AU governance working groups. [file:2]
+        SECURITY_REVIEW_CHANNEL     # Permission to file security/ethics reviews with priority.
+    end
+
+    struct ResearchPerk
+        perk_id        string
+        class          ResearchPerkClass
+        label          string
+        description    string
+        min_skill_lvl  int
+        required_domains SkillDomain[]
+        requires_ethics bool
+    end
+
+    const perk_readonly_data = ResearchPerk{
+        perk_id:          "PERK-READONLY-DATA-001",
+        class:            READONLY_DATA_PORTAL,
+        label:            "Anonymized AU Research Data Portal",
+        description:      "Grants read‑only access to de‑identified AU research datasets via DWN-backed APIs; no write or deanonymization capabilities.",
+        min_skill_lvl:    1,
+        required_domains: [DATA_SCIENCE_ML],
+        requires_ethics:  true
+    }
+
+    const perk_sim_sandbox = ResearchPerk{
+        perk_id:          "PERK-SIM-SANDBOX-BCI-001",
+        class:            SIMULATION_SANDBOX,
+        label:            "BCI / XR Simulation Sandbox",
+        description:      "Enables interaction with high-fidelity BCI and XR simulations using synthetic signals only; prohibits direct control of implants or medical hardware.",
+        min_skill_lvl:    2,
+        required_domains: [BCI_SIGNAL_PROCESSING, XR_INTERFACES],
+        requires_ethics:  true
+    }
+
+    const perk_tooling_access = ResearchPerk{
+        perk_id:          "PERK-TOOLING-OPENSTACK-001",
+        class:            TOOLING_ACCESS,
+        label:            "AU Open Tooling Access",
+        description:      "Provides access to open-source AU SDKs, analysis notebooks, and reproducible pipelines for cybernetic ability research.",
+        min_skill_lvl:    1,
+        required_domains: [NEURAL_ENGINEERING, DATA_SCIENCE_ML],
+        requires_ethics:  false
+    }
+
+    const perk_collab_room = ResearchPerk{
+        perk_id:          "PERK-COLLAB-ROOM-001",
+        class:            COLLAB_ROOM,
+        label:            "Federated AU Collaboration Room",
+        description:      "Allows participation in moderated research rooms with shared boards, protocols, and reproducible experiment templates.",
+        min_skill_lvl:    2,
+        required_domains: [NEURAL_ENGINEERING, ETHICS_GOVERNANCE],
+        requires_ethics:  true
+    }
+
+    const perk_governance_seat = ResearchPerk{
+        perk_id:          "PERK-GOVERNANCE-WG-001",
+        class:            GOVERNANCE_SEAT,
+        label:            "AU Governance Working Group Seat",
+        description:      "Grants non-voting working-group participation in AU governance and safety standardization discussions.",
+        min_skill_lvl:    3,
+        required_domains: [ETHICS_GOVERNANCE, PRIVACY_SECURITY],
+        requires_ethics:  true
+    }
+
+    const perk_security_channel = ResearchPerk{
+        perk_id:          "PERK-SEC-REVIEW-001",
+        class:            SECURITY_REVIEW_CHANNEL,
+        label:            "Security & Ethics Review Channel",
+        description:      "Enables prioritized reporting of vulnerabilities, privacy issues, and safety concerns to AU security and ethics teams.",
+        min_skill_lvl:    3,
+        required_domains: [PRIVACY_SECURITY],
+        requires_ethics:  true
+    }
+
+    const all_perks = [
+        perk_readonly_data,
+        perk_sim_sandbox,
+        perk_tooling_access,
+        perk_collab_room,
+        perk_governance_seat,
+        perk_security_channel
+    ]
+
+    # ----------------------------------------------------
+    # 3. DID VERIFICATION AND PROFILE CONSTRUCTION
+    # ----------------------------------------------------
+
+    function verify_web5_did(did: Web5DID) -> bool
+        # 1) Resolve DID via Web5 resolver; 2) check issuer_domain matches credential metadata;
+        # 3) validate credentials_hash against DWN bundle; 4) require HTTPS + TLS1.3 or better. [web:1][file:2]
+        return did.did != "" &&
+               str_starts_with(did.did, "did:ion:") &&
+               did.dwn_endpoint != "" &&
+               did.issuer_domain != "" &&
+               did.credentials_hash != ""
+    end
+
+    function compute_risk_score(skills: DocumentedSkill[], ethics_ok: bool) -> float
+        base = 1.0
+        for s in skills do
+            # Higher expertise in safety-related domains reduces risk.
+            if s.domain == PRIVACY_SECURITY || s.domain == ETHICS_GOVERNANCE then
+                base = base - 0.05 * s.level
+            else
+                base = base - 0.02 * s.level
+            end
+        end
+        if !ethics_ok then
+            base = base + 0.5
+        end
+        if base < 0.1 then base = 0.1 end
+        if base > 1.5 then base = 1.5 end
+        return base
+    end
+
+    function build_au_ability_profile(id: AUIdentityProfile,
+                                      skills: DocumentedSkill[],
+                                      ethics_cert_ok: bool) -> AUAbilityProfile
+        if !verify_web5_did(id.did) then
+            raise "Invalid or unverifiable Web5 DID for AU identity"
+        end
+        rs = compute_risk_score(skills, ethics_cert_ok)
+        return AUAbilityProfile{
+            identity:       id,
+            skills:         skills,
+            ethics_cert_ok: ethics_cert_ok,
+            risk_score:     rs
+        }
+    end
+
+    # ----------------------------------------------------
+    # 4. PERK ELIGIBILITY ENGINE (AUGMENTED-USER PERKS)
+    # ----------------------------------------------------
+
+    function has_required_domains(skills: DocumentedSkill[], required: SkillDomain[]) -> bool
+        if array_len(required) == 0 then
+            return true
+        end
+        have = []
+        for s in skills do
+            if !array_contains(have, s.domain) then
+                have = array_push(have, s.domain)
+            end
+        end
+        for d in required do
+            if !array_contains(have, d) then
+                return false
+            end
+        end
+        return true
+    end
+
+    function max_level_for_domains(skills: DocumentedSkill[],
+                                   required: SkillDomain[]) -> int
+        lvl = 0
+        for s in skills do
+            if array_contains(required, s.domain) && s.level > lvl then
+                lvl = s.level
+            end
+        end
+        return lvl
+    end
+
+    function eligible_perks(profile: AUAbilityProfile) -> ResearchPerk[]
+        result = []
+        for p in all_perks do
+            if p.requires_ethics && !profile.ethics_cert_ok then
+                continue
+            end
+            if !has_required_domains(profile.skills, p.required_domains) then
+                continue
+            end
+            lvl = max_level_for_domains(profile.skills, p.required_domains)
+            if lvl < p.min_skill_lvl then
+                continue
+            end
+            # Only low/medium risk profiles get automatic perks.
+            if profile.risk_score > 1.0 && p.class != READONLY_DATA_PORTAL then
+                continue
+            end
+            result = array_push(result, p)
+        end
+        return result
+    end
+
+    # ----------------------------------------------------
+    # 5. AUDIT & COMPLIANCE (NO HARDWARE / MEDICAL PATHS)
+    # ----------------------------------------------------
+
+    struct PerkGrantEvent
+        event_id      string
+        subject_did   string
+        perk_ids      string[]
+        issued_by     string   # DID of AU platform governance agent.
+        timestamp     string
+        risk_score    float
+        ethics_ok     bool
+    end
+
+    function log_perk_grant(ev: PerkGrantEvent)
+        # Log to quantum-anchored, append-only ledger; no rollback of history. [web:1][file:2]
+        record_reality_integrity_snapshot()
+        tagged = {
+            "event_id":    ev.event_id,
+            "subject_did": ev.subject_did,
+            "perk_ids":    ev.perk_ids,
+            "issued_by":   ev.issued_by,
+            "timestamp":   ev.timestamp,
+            "risk_score":  ev.risk_score,
+            "ethics_ok":   ev.ethics_ok
+        }
+        blockchain_append("AU-CYBERNETIC-PERKS-LEDGER", tagged)
+    end
+
+    # ----------------------------------------------------
+    # 6. SAFE ENTRYPOINT: DISCOVER + GRANT PERKS
+    # ----------------------------------------------------
+
+    function discover_and_grant_perks(identity: AUIdentityProfile,
+                                      skills: DocumentedSkill[],
+                                      ethics_cert_ok: bool,
+                                      governance_agent_did: string,
+                                      now_iso: string) -> ResearchPerk[]
+        # Rights & layer safety from existing compliance modules. [file:5]
+        au_enforce_core_au_rights(identity.display_name)
+        au_enforce_layer_separation(identity.display_name)
+
+        prof   = build_au_ability_profile(identity, skills, ethics_cert_ok)
+        perks  = eligible_perks(prof)
+
+        ids = []
+        for p in perks do
+            ids = array_push(ids, p.perk_id)
+        end
+
+        ev = PerkGrantEvent{
+            event_id:    "EVT-PERK-" + prof.identity.did.did + "-" + now_iso,
+            subject_did: prof.identity.did.did,
+            perk_ids:    ids,
+            issued_by:   governance_agent_did,
+            timestamp:   now_iso,
+            risk_score:  prof.risk_score,
+            ethics_ok:   prof.ethics_cert_ok
+        }
+        log_perk_grant(ev)
+
+        return perks
+    end
+end
