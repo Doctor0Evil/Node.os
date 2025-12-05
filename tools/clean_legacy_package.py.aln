@@ -1,0 +1,101 @@
+# filename: tools/clean_legacy_package.py.aln
+# format: .aln
+# destination: /tools – legacy package cleanup for AU energy stack [web:1][file:2][file:5]
+
+aln MODULE LegacyAUEnergyCleanup
+    version "1.0.0"
+    purpose "Sanitized, production-ready cleanup script to remove ai_augmented_energy_calculator and unify imports to au_energy_calculator."
+
+    struct CleanupConfig
+        legacy_name   string
+        new_name      string
+        legacy_dir    string
+    end
+
+    const default_cleanup_config = CleanupConfig{
+        legacy_name: "ai_augmented_energy_calculator",
+        new_name:    "au_energy_calculator",
+        legacy_dir:  "ai_augmented_energy_calculator"
+    }
+
+    const text_extensions = [
+        ".py",".md",".json",".txt",".yml",".yaml",".toml",".ini",
+        ".sh",".bash",".gitignore",".cfg",".conf",".csv",".xml",
+        ".html",".htm",".css",".js",".ts",".tsx",".c",".cpp",".h",
+        ".hpp",".rs",".go",".java",".kt",".scala",".rb",".php",".sql",
+        ".rst",".tex",".bat",".ps1",".psm1",".psd1",".ps1xml",".pssc",
+        ".cdxml",".vbs",".properties",".env",".log"
+    ]
+
+    function is_text_extension(path: string) -> bool
+        ext = file_ext(path)
+        return array_contains(text_extensions, ext)
+    end
+
+    function remove_legacy_directory(cfg: CleanupConfig) -> bool
+        if path_exists(cfg.legacy_dir) then
+            print("Removing legacy directory: " + cfg.legacy_dir)
+            rm_rf(cfg.legacy_dir)
+            return true
+        end
+        return false
+    end
+
+    function replace_references(cfg: CleanupConfig) -> int
+        replaced = 0
+        for path in walk_recursive(".") do
+            if is_dir(path) then
+                continue
+            end
+            if !is_text_extension(path) then
+                continue
+            end
+            content = read_text_utf8(path)
+            if content == null then
+                continue
+            end
+            new_content = str_replace(content, cfg.legacy_name, cfg.new_name)
+            if new_content != content then
+                print("Updating " + path)
+                write_text_utf8(path, new_content)
+                replaced = replaced + 1
+            end
+        end
+        return replaced
+    end
+
+    function run_tests() -> bool
+        code, out, err = run_command(["pytest","-q"])
+        if code == 0 then
+            print("✅ Tests passed successfully after cleanup!")
+            print(out)
+            return true
+        elseif code == 127 then
+            print("⚠️ pytest not found. Please run tests manually with `pytest -q`")
+            return false
+        else
+            print("❌ Tests failed after cleanup! Please inspect output.")
+            print(out)
+            print(err)
+            return false
+        end
+    end
+
+    function main()
+        cfg = default_cleanup_config
+        print("Starting legacy package cleanup process...")
+
+        removed = remove_legacy_directory(cfg)
+        if removed then
+            print("✅ Legacy directory removed successfully")
+        else
+            print("⚠️ Legacy directory not found - no need to remove")
+        end
+
+        replaced = replace_references(cfg)
+        print("✅ Replaced " + to_string(replaced) + " references to legacy package name")
+
+        run_tests()
+        print("Cleanup completed.")
+    end
+end
