@@ -1,0 +1,252 @@
+# filename: /au_platform/au_unbreakable_rights_and_security_v1_0.aln
+# format: .aln
+# destination: AU Platform – Web5-DID anchored immutable rights & security core [web:1][file:5]
+
+aln MODULE AU_Unbreakable_Rights_And_Security
+    version "1.0.0"
+    purpose "ALN core that binds augmented-user rights, security, and control logic to Web5/ION-style self-sovereign identifiers, enforcing non-nullifiable existence, privacy, consent, and audit under layered, tamper-evasive compliance."  # [web:1][file:5]
+
+    # ----------------------------------------------------
+    # 1. CORE TYPES – IDENTITY, RIGHTS, AND POLICY
+    # ----------------------------------------------------
+
+    struct Web5DID
+        did              string   # e.g. did:ion:EiD8J2b3K8k9Q8x9L7m2n4p1q5r6s7t8u9v0w1x2y3z4A5B6C7D8E9F0  [web:1]
+        dwn_endpoint     string   # Decentralized Web Node (user data host).
+        registry_hash    string   # Hash of DID Document (Sidetree op).        [web:1]
+        owner_pubkey     string   # Primary verification key fingerprint.
+    end
+
+    enum RightClass
+        EXISTENCE
+        PRIVACY
+        CONSENT
+        SELF_OWNERSHIP
+        METACOG_INTEGRITY
+        AUDIT
+    end
+
+    struct AUCoreRights
+        subject_did      Web5DID
+        rights_active    bool
+        existence_guard  bool
+        privacy_guard    bool
+        consent_guard    bool
+        self_owner_guard bool
+        meta_guard       bool
+        audit_guard      bool
+    end
+
+    struct AUPolicyAnchor
+        policy_id        string
+        version          string
+        rights           AUCoreRights
+        created_at_iso   string
+        last_update_iso  string
+        immutability_tag string   # "LOCKED" once adopted globally.
+    end
+
+    const global_policy_anchor = AUPolicyAnchor{
+        policy_id:        "AU-GLOBAL-RIGHTS-SECURITY-001",
+        version:          "1.0.0",
+        rights:           AUCoreRights{
+            subject_did:      Web5DID{
+                did:              "did:ion:GLOBAL-AU-RIGHTS-ANCHOR",
+                dwn_endpoint:     "wss://dwn.au.global/rights",
+                registry_hash:    "sha3-512:GLOBAL-RIGHTS-ANCHOR-HASH",
+                owner_pubkey:     "ed25519:GLOBAL-RIGHTS-ANCHOR-PUBKEY"
+            },
+            rights_active:    true,
+            existence_guard:  true,
+            privacy_guard:    true,
+            consent_guard:    true,
+            self_owner_guard: true,
+            meta_guard:       true,
+            audit_guard:      true
+        },
+        created_at_iso:   "2025-01-01T00:00:00Z",
+        last_update_iso:  "2025-01-01T00:00:00Z",
+        immutability_tag: "LOCKED"
+    }
+
+    # ----------------------------------------------------
+    # 2. HARDENED RIGHTS ENFORCEMENT WRAPPERS
+    # ----------------------------------------------------
+
+    function au_assert_global_policy_locked()
+        if global_policy_anchor.immutability_tag != "LOCKED" then
+            compliancelockdown()
+            raise "GLOBAL_AU_POLICY_NOT_LOCKED"
+        end
+    end
+
+    function au_bind_subject_to_rights(subject_label: string, did: Web5DID) -> AUCoreRights
+        au_assert_global_policy_locked()
+        return AUCoreRights{
+            subject_did:      did,
+            rights_active:    true,
+            existence_guard:  true,
+            privacy_guard:    true,
+            consent_guard:    true,
+            self_owner_guard: true,
+            meta_guard:       true,
+            audit_guard:      true
+        }
+    end
+
+    function au_enforce_all_core_rights(entity_label: string, rights: AUCoreRights)
+        au_assert_global_policy_locked()
+
+        if !rights.rights_active then
+            compliancelockdown()
+            raise "RIGHTS_INACTIVE_FOR_ENTITY"
+        end
+
+        if rights.existence_guard then
+            enforcerighttoexistence(entity_label)
+        end
+        if rights.privacy_guard then
+            enforcerighttoprivacy(entity_label)
+        end
+        if rights.consent_guard then
+            enforcerighttoconsent(entity_label, "au_augmentation_and_research_use")
+        end
+        if rights.self_owner_guard then
+            enforcerighttoselfownership(entity_label)
+        end
+        if rights.meta_guard then
+            enforcerighttometacognitiveintegrity(entity_label)
+        end
+        if rights.audit_guard then
+            enforcerighttoaudit(entity_label)
+        end
+    end
+
+    function au_enforce_all_layer_boundaries(entity_label: string)
+        au_enforce_layer_separation(entity_label)
+    end
+
+    # ----------------------------------------------------
+    # 3. IMMUTABLE ACTION GUARD – NON-DESTRUCTIVE CORE
+    # ----------------------------------------------------
+
+    enum ActionClass
+        READ_ONLY
+        CONFIG_SAFE
+        HIGH_RISK
+    end
+
+    struct AUActionContext
+        subject_did      Web5DID
+        action_name      string
+        action_class     ActionClass
+        request_hash     string
+        timestamp_iso    string
+        requested_by     string   # DID of requesting app or agent.
+    end
+
+    struct AUActionDecision
+        allowed          bool
+        reason           string
+    end
+
+    function au_global_immutable_guard(ctx: AUActionContext,
+                                       rights: AUCoreRights) -> AUActionDecision
+        au_enforce_all_core_rights(ctx.subject_did.did, rights)
+        au_enforce_all_layer_boundaries(ctx.subject_did.did)
+
+        # Absolute non-destruction: deny anything tagged HIGH_RISK at this layer.
+        if ctx.action_class == HIGH_RISK then
+            compliancelockdown()
+            return AUActionDecision{
+                allowed: false,
+                reason:  "HIGH_RISK_ACTION_DENIED_BY_IMMUTABLE_POLICY"
+            }
+        end
+
+        # READ_ONLY and CONFIG_SAFE allowed under explainability + audit.
+        demand_audittrail(ctx.subject_did.did)
+        requireauditlogwriteatom()
+
+        enforceexplainabilityagent()
+        enforcehumanintheloop()
+
+        return AUActionDecision{
+            allowed: true,
+            reason:  "ACTION_ALLOWED_UNDER_IMMUTABLE_AU_RIGHTS"
+        }
+    end
+
+    # ----------------------------------------------------
+    # 4. IMMUTABLE LEDGER LOGGING – UNBREAKABLE TRACE
+    # ----------------------------------------------------
+
+    struct AULogRecord
+        event_id         string
+        subject_did      string
+        action_name      string
+        action_class     string
+        request_hash     string
+        timestamp_iso    string
+        decision_allowed bool
+        decision_reason  string
+        policy_id        string
+        policy_version   string
+    end
+
+    function au_log_decision(ctx: AUActionContext, dec: AUActionDecision)
+        record_reality_integrity_snapshot()
+        tagged = {
+            "event_id":         "EVT-AU-" + ctx.request_hash,
+            "subject_did":      ctx.subject_did.did,
+            "action_name":      ctx.action_name,
+            "action_class":     to_string(ctx.action_class),
+            "request_hash":     ctx.request_hash,
+            "timestamp_iso":    ctx.timestamp_iso,
+            "decision_allowed": dec.allowed,
+            "decision_reason":  dec.reason,
+            "policy_id":        global_policy_anchor.policy_id,
+            "policy_version":   global_policy_anchor.version
+        }
+        blockchain_append("AU-GLOBAL-RIGHTS-LEDGER", tagged)   # Tamper-evasive anchoring. [web:1][file:5]
+    end
+
+    # ----------------------------------------------------
+    # 5. PUBLIC ENTRYPOINT – NON-OVERRIDABLE GATEWAY
+    # ----------------------------------------------------
+
+    function au_global_rights_gateway(subject_label: string,
+                                      did: Web5DID,
+                                      action_name: string,
+                                      action_class: ActionClass,
+                                      request_hash: string,
+                                      requested_by: string,
+                                      timestamp_iso: string) -> AUActionDecision
+        rights = au_bind_subject_to_rights(subject_label, did)
+
+        ctx = AUActionContext{
+            subject_did:   did,
+            action_name:   action_name,
+            action_class:  action_class,
+            request_hash:  request_hash,
+            timestamp_iso: timestamp_iso,
+            requested_by:  requested_by
+        }
+
+        dec = au_global_immutable_guard(ctx, rights)
+        au_log_decision(ctx, dec)
+
+        if !dec.allowed then
+            handle_bandwave_anomaly(BandwaveRequest{
+                node_id:      "GLOBAL-AU-NODE",
+                entity_id:    subject_label,
+                band_class:   RF_CONSUMER,
+                requested_mw: 0.0,
+                purpose_tag:  "policy_violation_attempt",
+                bci_involved: false
+            })
+        end
+
+        return dec
+    end
+end
