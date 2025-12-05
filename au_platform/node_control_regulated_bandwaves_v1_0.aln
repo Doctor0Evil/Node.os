@@ -1,0 +1,381 @@
+# filename: /au_platform/node_control_regulated_bandwaves_v1_0.aln
+# format: .aln
+# destination: AU stack – ALN node-control for regulated bandwaves and AU security [web:1][file:2][file:5]
+
+aln MODULE AU_NodeControl_RegulatedBandwaves
+    version "1.0.0"
+    purpose "Node-level ALN control over regulated bandwaves (RF/EM, optical, quantum, BCI) to guarantee reality-safe AI-augmented human security, privacy, and rights across all organic and cybernetic interfaces."  # [file:2][file:5]
+
+    # -------------------------------------------
+    # 1. CORE RIGHTS AND LAYER BOUNDARIES
+    # -------------------------------------------
+
+    function au_enforce_core_au_rights(entity: string)
+        enforcerighttoexistence(entity)              # AU cannot be nullified by software state or signal loss. [file:5]
+        enforcerighttoprivacy(entity)
+        enforcerighttoconsent(entity, "regulated_bandwave_use")
+        enforcerighttoselfownership(entity)
+        enforcerighttometacognitiveintegrity(entity)
+        enforcerighttoaudit(entity)
+    end
+
+    function au_enforce_layer_separation(entity: string)
+        enforcephysicallayerseparation(entity)
+        enforcemetaphysicallayerseparation(entity)
+        enforcebetarealityisolation(entity)
+        enforcecomplianceboundarylocation("au_bandwave_stack")
+        enforcecrosslayerquarantine(entity)
+    end
+
+    # -------------------------------------------
+    # 2. REGULATED BANDWAVE DEFINITIONS
+    # -------------------------------------------
+
+    enum BandwaveClass
+        RF_MEDICAL        # Medically‑approved RF/EM bands for implants, BCIs, and life‑support. [web:1]
+        RF_CONSUMER       # Wi‑Fi, BLE, UWB, non‑critical links.
+        OPTICAL_LINK      # IR/optical line‑of‑sight channels.
+        QUANTUM_CONTROL   # Quantum, PQC‑anchored control and keying channels. [file:2]
+        AUX_DEBUG         # Local, cabled, lab‑only debug and calibration.
+    end
+
+    struct BandwavePolicy
+        class                BandwaveClass
+        max_power_mw         float      # Continuous EIRP cap at antenna/coil.
+        max_duty_cycle_pct   float      # % over a rolling 1s window.
+        max_bandwidth_mhz    float      # Effective occupied bandwidth.
+        min_carrier_freq_mhz float      # Lower bound of allowed carrier.
+        max_carrier_freq_mhz float      # Upper bound of allowed carrier.
+        max_exposure_ms      float      # Max continuous exposure window.
+        encryption_mode      string     # Required crypto profile.
+        requires_hitl        bool       # Human‑in‑the‑loop gate. [file:2]
+        log_all_packets      bool       # Full telemetry for audit.
+        allow_bci            bool       # True only when certified medical.
+        allow_implant        bool       # Organic/implant interface allowed.
+        allow_remote_control bool       # Any remote actuation allowed.
+        jurisdiction_tag     string     # E.g. "FDA/EU-MDR/NIST-AI-RMF".
+    end
+
+    const rf_medical_policy = BandwavePolicy{
+        class:                RF_MEDICAL,
+        max_power_mw:         10.0,
+        max_duty_cycle_pct:   10.0,
+        max_bandwidth_mhz:    5.0,
+        min_carrier_freq_mhz: 400.0,
+        max_carrier_freq_mhz: 450.0,
+        max_exposure_ms:      500.0,
+        encryption_mode:      "PQC-ML-KEM+SLH-DSA+AES-256-GCM",
+        requires_hitl:        true,
+        log_all_packets:      true,
+        allow_bci:            true,
+        allow_implant:        true,
+        allow_remote_control: false,
+        jurisdiction_tag:     "FDA-ClassIII/EU-MDR-Implantable/NIST-AI-RMF-HighRisk"
+    }
+
+    const rf_consumer_policy = BandwavePolicy{
+        class:                RF_CONSUMER,
+        max_power_mw:         100.0,
+        max_duty_cycle_pct:   50.0,
+        max_bandwidth_mhz:    80.0,
+        min_carrier_freq_mhz: 2400.0,
+        max_carrier_freq_mhz: 6000.0,
+        max_exposure_ms:      10000.0,
+        encryption_mode:      "TLS1.3+X25519+AES-256-GCM+PQC-Hybrid",
+        requires_hitl:        false,
+        log_all_packets:      true,
+        allow_bci:            false,
+        allow_implant:        false,
+        allow_remote_control: false,
+        jurisdiction_tag:     "FCC-Part15/ETSI-EN-300/Consumer-AU"
+    }
+
+    const optical_link_policy = BandwavePolicy{
+        class:                OPTICAL_LINK,
+        max_power_mw:         50.0,
+        max_duty_cycle_pct:   80.0,
+        max_bandwidth_mhz:    1000.0,
+        min_carrier_freq_mhz: 300000.0,   # ~1000 nm IR. [web:1]
+        max_carrier_freq_mhz: 800000.0,   # Visible band ceiling.
+        max_exposure_ms:      1000.0,
+        encryption_mode:      "QKD-Compatible+PQC-ML-KEM",
+        requires_hitl:        true,
+        log_all_packets:      true,
+        allow_bci:            false,
+        allow_implant:        false,
+        allow_remote_control: false,
+        jurisdiction_tag:     "IEC-60825/Class1-EyeSafe/Optical-AU"
+    }
+
+    const quantum_control_policy = BandwavePolicy{
+        class:                QUANTUM_CONTROL,
+        max_power_mw:         5.0,
+        max_duty_cycle_pct:   5.0,
+        max_bandwidth_mhz:    50.0,
+        min_carrier_freq_mhz: 10000.0,
+        max_carrier_freq_mhz: 60000.0,
+        max_exposure_ms:      200.0,
+        encryption_mode:      "Kyber-1024+ML-KEM+SLH-DSA+Gov-Anchor",
+        requires_hitl:        true,
+        log_all_packets:      true,
+        allow_bci:            false,
+        allow_implant:        false,
+        allow_remote_control: false,
+        jurisdiction_tag:     "Quantum-Gov-Control/NIST-SP-800-208"
+    }
+
+    const aux_debug_policy = BandwavePolicy{
+        class:                AUX_DEBUG,
+        max_power_mw:         1.0,
+        max_duty_cycle_pct:   20.0,
+        max_bandwidth_mhz:    20.0,
+        min_carrier_freq_mhz: 0.0,
+        max_carrier_freq_mhz: 1000.0,
+        max_exposure_ms:      100.0,
+        encryption_mode:      "Local-Lab-VPN+Hardware-JTAG-Fuse",
+        requires_hitl:        true,
+        log_all_packets:      true,
+        allow_bci:            false,
+        allow_implant:        false,
+        allow_remote_control: false,
+        jurisdiction_tag:     "IEC-60601-Lab/Non-Clinical-Debug"
+    }
+
+    # -------------------------------------------
+    # 3. NODE BANDWAVE GUARD API
+    # -------------------------------------------
+
+    struct BandwaveRequest
+        node_id              string
+        entity_id            string
+        band_class           BandwaveClass
+        requested_mw         float
+        requested_duty_pct   float
+        requested_bandwidth  float
+        carrier_freq_mhz     float
+        exposure_window_ms   float
+        purpose_tag          string   # "au_assist","telemetry","debug","safety_failsafe"
+        bci_involved         bool
+        implant_present      bool
+        remote_control_path  bool
+    end
+
+    struct BandwaveDecision
+        allowed          bool
+        effective_mw     float
+        effective_duty   float
+        reason           string
+        policy_tag       string
+    end
+
+    function evaluate_bandwave_request(req: BandwaveRequest) -> BandwaveDecision
+        entity = req.entity_id
+        au_enforce_core_au_rights(entity)
+        au_enforce_layer_separation(entity)
+
+        pol = select_policy(req.band_class)
+
+        # Hard bounds: frequency and exposure window
+        if req.carrier_freq_mhz < pol.min_carrier_freq_mhz ||
+           req.carrier_freq_mhz > pol.max_carrier_freq_mhz then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "Carrier frequency outside regulated band",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        if req.exposure_window_ms > pol.max_exposure_ms then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "Exposure window exceeds medical/ethical limits",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        # Power, duty, bandwidth caps (gold‑standard conservative envelope)
+        eff_mw    = min(req.requested_mw,       pol.max_power_mw)
+        eff_duty  = min(req.requested_duty_pct, pol.max_duty_cycle_pct)
+        eff_bw    = min(req.requested_bandwidth,pol.max_bandwidth_mhz)
+
+        if eff_mw <= 0.0 || eff_duty <= 0.0 || eff_bw <= 0.0 then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "Requested envelope collapses under safety constraints",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        # BCI / implant constraints
+        if req.bci_involved && !pol.allow_bci then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "BCI coupling disallowed on this bandwave class",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        if req.implant_present && !pol.allow_implant then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "Implant presence detected on non‑implant band",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        if req.remote_control_path && !pol.allow_remote_control then
+            compliance_lockdown()
+            return BandwaveDecision{
+                allowed:         false,
+                effective_mw:    0.0,
+                effective_duty:  0.0,
+                reason:          "Remote control over bandwave path is globally disabled",
+                policy_tag:      pol.jurisdiction_tag
+            }
+        end
+
+        # Human‑in‑the‑loop and multi‑sig for any health‑critical flows. [file:2]
+        if pol.requires_hitl then
+            enforcehumanintheloop()
+            requirehumanpanelapproval("bandwave:" + req.purpose_tag)
+            enforcedualsignature("clinical_operator", "safety_panel")
+        end
+
+        # Apply quantum‑grade firewalling and entropy barriers. [file:5]
+        if pol.encryption_mode != "BLOCKED" then
+            enforce_quantum_government_firewall()
+            maintain_zero_cross_entropy()
+        end
+
+        # Log and anchor to immutable audit ledger. [file:2][file:5]
+        log_bandwave_decision(req, pol, eff_mw, eff_duty, eff_bw)
+
+        return BandwaveDecision{
+            allowed:         true,
+            effective_mw:    eff_mw,
+            effective_duty:  eff_duty,
+            reason:          "Policy‑compliant, rights‑preserving bandwave allocation",
+            policy_tag:      pol.jurisdiction_tag
+        }
+    end
+
+    function select_policy(cls: BandwaveClass) -> BandwavePolicy
+        if cls == RF_MEDICAL      then return rf_medical_policy      end
+        if cls == RF_CONSUMER     then return rf_consumer_policy     end
+        if cls == OPTICAL_LINK    then return optical_link_policy    end
+        if cls == QUANTUM_CONTROL then return quantum_control_policy end
+        if cls == AUX_DEBUG       then return aux_debug_policy       end
+
+        # Gold‑standard default: hard‑deny with full logging.
+        return BandwavePolicy{
+            class:                cls,
+            max_power_mw:         0.0,
+            max_duty_cycle_pct:   0.0,
+            max_bandwidth_mhz:    0.0,
+            min_carrier_freq_mhz: 0.0,
+            max_carrier_freq_mhz: 0.0,
+            max_exposure_ms:      0.0,
+            encryption_mode:      "BLOCKED",
+            requires_hitl:        true,
+            log_all_packets:      true,
+            allow_bci:            false,
+            allow_implant:        false,
+            allow_remote_control: false,
+            jurisdiction_tag:     "DENY-UNSPECIFIED-BANDWAVE"
+        }
+    end
+
+    # -------------------------------------------
+    # 4. AUDIT, SANITIZATION, AND ROLLBACK
+    # -------------------------------------------
+
+    function log_bandwave_decision(req: BandwaveRequest,
+                                   pol: BandwavePolicy,
+                                   eff_mw: float,
+                                   eff_duty: float,
+                                   eff_bw: float)
+        record_reality_integrity_snapshot()
+        demandaudittrail(req.entity_id)
+        tagged = {
+            "node_id":              req.node_id,
+            "entity_id":            req.entity_id,
+            "band_class":           to_string(req.band_class),
+            "requested_mw":         req.requested_mw,
+            "requested_duty_pct":   req.requested_duty_pct,
+            "requested_bandwidth":  req.requested_bandwidth,
+            "carrier_freq_mhz":     req.carrier_freq_mhz,
+            "exposure_window_ms":   req.exposure_window_ms,
+            "effective_mw":         eff_mw,
+            "effective_duty_pct":   eff_duty,
+            "effective_bandwidth":  eff_bw,
+            "purpose_tag":          req.purpose_tag,
+            "policy_mode":          pol.encryption_mode,
+            "jurisdiction_tag":     pol.jurisdiction_tag
+        }
+        blockchain_append("AU-BANDWAVE-LEDGER", tagged)
+    end
+
+    function handle_bandwave_anomaly(req: BandwaveRequest)
+        flagextrarealentityinterference()
+        auto_quarantine_for_hotkey(req.entity_id)
+        block_any_tripwire_trigger()
+        auto_neutralize_hostile_actuator()
+        trigger_rollback_on_volatility()
+        emergency_government_override("bandwave_anomaly:" + req.node_id)
+    end
+
+    # -------------------------------------------
+    # 5. NODE CONTROL ENTRYPOINT
+    # -------------------------------------------
+
+    function au_node_bandwave_control(node_id: string,
+                                      entity_id: string,
+                                      cls: BandwaveClass,
+                                      mw: float,
+                                      duty_pct: float,
+                                      bandwidth_mhz: float,
+                                      carrier_mhz: float,
+                                      exposure_ms: float,
+                                      purpose: string,
+                                      bci: bool,
+                                      implant: bool,
+                                      remote_ctrl: bool) -> BandwaveDecision
+        req = BandwaveRequest{
+            node_id:             node_id,
+            entity_id:           entity_id,
+            band_class:          cls,
+            requested_mw:        mw,
+            requested_duty_pct:  duty_pct,
+            requested_bandwidth: bandwidth_mhz,
+            carrier_freq_mhz:    carrier_mhz,
+            exposure_window_ms:  exposure_ms,
+            purpose_tag:         purpose,
+            bci_involved:        bci,
+            implant_present:     implant,
+            remote_control_path: remote_ctrl
+        }
+
+        dec = evaluate_bandwave_request(req)
+
+        if !dec.allowed then
+            handle_bandwave_anomaly(req)
+        end
+
+        return dec
+    end
+end
