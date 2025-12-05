@@ -1,0 +1,209 @@
+# filename: /au_platform/ai_augmented_human_energy_calculator_v1_1.aln
+# destination: Unreal/Unity/Godot AU stack – per-action, per-node, per-user evolution-safe engine [file:1][file:2][file:5]
+
+aln MODULE AI_AugmentedHumanEnergyCalculator
+    version "1.1.0"
+    purpose "Per-action, per-write, per-node, per-system, per-augmented-user energy + evolution alignment with hard intrusion-prevention."
+
+    # -----------------------------------
+    # 0. GLOBAL SHIELDS / NON-INTRUSION
+    # -----------------------------------
+
+    function hard_non_intrusion_shield()
+        # Reality-safe rights + boundaries, no external override. [file:5][file:2]
+        enforcerighttoexistence(current_user)
+        enforcerighttoprivacy(current_user)
+        enforcerighttoconsent(current_user, current_action)
+        enforcephysicallayerseparation(current_user)
+        enforcebetarealityisolation(current_simulation)
+        compliancelockdown()
+    end
+
+    # -----------------------------------
+    # 1. PER-ACTION / PER-WRITE ACCOUNTING
+    # -----------------------------------
+
+    struct AU_ActionEnergy
+        action_id           string
+        user_id             string
+        node_id             string
+        system_id           string
+        write_ops           int
+        compute_ops         int
+        ai_inferences       int
+        cyber_events        int
+        human_w             float
+        cyber_w             float
+        ai_w                float
+        total_w             float
+        evolution_score     float
+        intrusion_flag      bool
+    end
+
+    # Called on EVERY engine tick before commit.
+    function account_action_energy(user: AU_UserState,
+                                   node_id: string,
+                                   system_id: string,
+                                   ctx: AU_ActionContext) -> AU_ActionEnergy
+        hard_non_intrusion_shield()
+
+        breakdown    = calculate_au_energy(user, ctx)      # from v1.0 module [file:1]
+        evolution_s  = compute_evolution_alignment(user, breakdown)
+        intrude      = detect_intrusion_or_diversion(user, node_id, system_id, ctx, breakdown)
+
+        rec = AU_ActionEnergy{
+            action_id:       ctx.action_id,
+            user_id:         user.user_id,
+            node_id:         node_id,
+            system_id:       system_id,
+            write_ops:       ctx.write_ops,
+            compute_ops:     ctx.compute_ops,
+            ai_inferences:   ctx.ai_inference_count,
+            cyber_events:    ctx.cybernetic_ops,
+            human_w:         breakdown.total_human_w,
+            cyber_w:         breakdown.total_cybernetic_w,
+            ai_w:            breakdown.total_ai_w,
+            total_w:         breakdown.total_scene_w,
+            evolution_score: evolution_s,
+            intrusion_flag:  intrude
+        }
+
+        persist_energy_ledger(rec)
+        improve_connected_user(user, breakdown)            # continuous evolution
+
+        return rec
+    end
+
+    # -----------------------------------
+    # 2. PER-NODE / PER-SYSTEM METRICS
+    # -----------------------------------
+
+    struct AU_NodeState
+        node_id         string
+        avg_w           float
+        max_w           float
+        total_actions   int
+        intrusion_count int
+    end
+
+    struct AU_SystemState
+        system_id       string
+        avg_w           float
+        max_w           float
+        total_actions   int
+        intrusion_count int
+    end
+
+    map node_stats   string -> AU_NodeState
+    map system_stats string -> AU_SystemState
+
+    function update_node_and_system(rec: AU_ActionEnergy)
+        ns = node_stats[rec.node_id]
+        ss = system_stats[rec.system_id]
+
+        ns.total_actions += 1
+        ns.avg_w          = ns.avg_w + (rec.total_w - ns.avg_w) / ns.total_actions
+        ns.max_w          = max(ns.max_w, rec.total_w)
+        if rec.intrusion_flag then ns.intrusion_count += 1 end
+        node_stats[rec.node_id] = ns
+
+        ss.total_actions += 1
+        ss.avg_w          = ss.avg_w + (rec.total_w - ss.avg_w) / ss.total_actions
+        ss.max_w          = max(ss.max_w, rec.total_w)
+        if rec.intrusion_flag then ss.intrusion_count += 1 end
+        system_stats[rec.system_id] = ss
+    end
+
+    # -----------------------------------
+    # 3. CONTINUOUS-EVOLUTION ALIGNMENT
+    # -----------------------------------
+
+    function compute_evolution_alignment(user: AU_UserState,
+                                         breakdown: AU_EnergyBreakdown) -> float
+        # Score 0–1, where 1 = optimal co-evolution (human-first + efficient AI). [file:2]
+        human_weight   = 0.5
+        energy_weight  = 0.3
+        safety_weight  = 0.2
+
+        # Favor low fatigue and high focus.
+        human_term     = (1.0 - user.fatigue_index) * 0.5 + user.focus_index * 0.5
+
+        # Favor scenes where total power is minimized relative to benefit.
+        energy_term    = clamp01(1.0 - (breakdown.total_scene_w / 400.0))
+
+        # Favor safe non-intrusive operation (no safety_flag).
+        safety_term    = user.safety_flag ? 0.7 : 1.0
+
+        score          = human_weight * human_term
+                       + energy_weight * energy_term
+                       + safety_weight * safety_term
+        return clamp01(score)
+    end
+
+    # -----------------------------------
+    # 4. INTRUSION / DIVERSION DEFENSE
+    # -----------------------------------
+
+    function detect_intrusion_or_diversion(user: AU_UserState,
+                                           node_id: string,
+                                           system_id: string,
+                                           ctx: AU_ActionContext,
+                                           breakdown: AU_EnergyBreakdown) -> bool
+        # Reality-safe checks – no cross-layer, no unauthorized redirection. [file:5]
+        if !layer_is_consistent(user, node_id, system_id) then
+            quarantineentity(system_id)
+            enforcecrosslayerquarantine(user)
+            return true
+        end
+
+        # Sudden external spike in compute/AI not initiated by AU research tags.
+        if ctx.ai_inference_count > 0 and !tag_is_research(ctx.scenario_tag) then
+            autoquarantineforhotkey(system_id)
+            return true
+        end
+
+        # Excessive power on non-AU channels -> block diversion.
+        if breakdown.total_scene_w > 500.0 then
+            lockcompliancekeys()
+            enforceautonomousshutdownrisk()
+            return true
+        end
+
+        return false
+    end
+
+    function layer_is_consistent(user: AU_UserState, node_id: string, system_id: string) -> bool
+        # Stub: bindentitytosole-layer + recordrealityintegritysnapshot. [file:5]
+        recordrealityintegritysnapshot()
+        return true
+    end
+
+    function tag_is_research(tag: string) -> bool
+        return (tag == "au_research" or tag == "au_sim" or tag == "au_lab")
+    end
+
+    # -----------------------------------
+    # 5. IMMUTABLE ENERGY LEDGER
+    # -----------------------------------
+
+    function persist_energy_ledger(rec: AU_ActionEnergy)
+        # Per-action, per-user, per-node, per-system entry to quantum-anchored log. [file:1]
+        payload = rec.action_id + "|" + rec.user_id + "|" + rec.node_id + "|" + rec.system_id
+                + "|" + to_string(rec.total_w) + "|" + to_string(rec.evolution_score)
+        h       = sha3_512(payload)
+        blockchain_append("AU-ENERGY-LEDGER", {payload:payload, hash:h})
+        update_node_and_system(rec)
+    end
+
+    # -----------------------------------
+    # 6. PUBLIC API – ENGINE HOOK
+    # -----------------------------------
+
+    function on_engine_action(user: AU_UserState,
+                              node_id: string,
+                              system_id: string,
+                              ctx: AU_ActionContext) -> AU_ActionEnergy
+        rec = account_action_energy(user, node_id, system_id, ctx)
+        return rec
+    end
+end
