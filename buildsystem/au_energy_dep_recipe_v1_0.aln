@@ -1,0 +1,121 @@
+# filename: /buildsystem/au_energy_dep_recipe_v1_0.aln
+# format: .aln
+# destination: AU / neuromorph build system – depends-style recipe for an AU energy module [file:6]
+
+aln MODULE AU_DependsStyleRecipe
+    version "1.0.0"
+    purpose "Sanitized, depends.mk-style recipe template for building an AU energy / nanomedical module with identifiers, build vars, and build commands."
+
+    # -------------------------------------------------
+    # 1. IDENTIFIERS (MIRRORING DEPENDS CONVENTIONS)
+    # -------------------------------------------------
+
+    const au_energy_version       = "1.0.0"
+    const au_energy_download_path = "https://example.org/au-energy"
+    const au_energy_file_name     = "au-energy-1.0.0.tar.gz"
+    const au_energy_sha256_hash   = "CHANGE_ME_WITH_REAL_SHA256"
+
+    # Optional fields
+    const au_energy_build_subdir  = "au-energy-1.0.0"
+    const au_energy_download_file = "au-energy-1.0.0.tar.gz"
+
+    # Example dependencies (static secondary deps recommended)
+    const au_energy_dependencies  = ["openssl", "boost"]
+
+    # Patches and extra sources lists (empty by default)
+    const au_energy_patches       = []
+    const au_energy_extra_sources = []
+
+    # -------------------------------------------------
+    # 2. BUILD VARIABLES (HOST/ARCH OVERRIDES READY)
+    # -------------------------------------------------
+
+    define au_energy_set_vars
+        au_energy_cc       = "gcc"
+        au_energy_cxx      = "g++"
+        au_energy_ar       = "ar"
+        au_energy_ranlib   = "ranlib"
+        au_energy_nm       = "nm"
+
+        # Base flags
+        au_energy_cflags   = "-O2 -fPIC"
+        au_energy_cxxflags = "-O2 -fPIC"
+        au_energy_ldflags  = ""
+        au_energy_cppflags = ""
+
+        # Example release/debug refinement
+        au_energy_cflags_release   = "-O3"
+        au_energy_cflags_debug     = "-O0 -g"
+
+        # Environment hooks
+        au_energy_config_env = ""
+        au_energy_build_env  = ""
+        au_energy_stage_env  = ""
+
+        # Configure / build options
+        au_energy_config_opts = "--with-pic --disable-tests"
+        au_energy_build_opts  = ""
+    endef
+
+    # -------------------------------------------------
+    # 3. BUILD COMMANDS (FETCH → EXTRACT → BUILD → STAGE)
+    # -------------------------------------------------
+
+    # Available per-recipe variables (as in depends):
+    #   au_energy_staging_dir
+    #   au_energy_staging_prefix_dir
+    #   au_energy_extract_dir
+    #   au_energy_build_dir
+    #   au_energy_patch_dir
+
+    define au_energy_fetch_cmds
+        # From build dir: fetch source if not already present
+        if [ ! -f "sources/${au_energy_file_name}" ]; then \
+            mkdir -p sources; \
+            wget -O "sources/${au_energy_download_file}" "${au_energy_download_path}/${au_energy_file_name}"; \
+        fi
+    endef
+
+    define au_energy_extract_cmds
+        # Verify hash then extract
+        cd sources && \
+        echo "${au_energy_sha256_hash}  ${au_energy_download_file}" | sha256sum -c - && \
+        cd "$(${1}_build_dir)" && \
+        tar xf "../sources/${au_energy_download_file}"
+    endef
+
+    define au_energy_preprocess_cmds
+        # Optional: apply patches
+        if [ -d "$(${1}_patch_dir)" ]; then \
+            cd "$(${1}_extract_dir)" && \
+            for p in ${au_energy_patches}; do \
+                patch -p1 < "$(${1}_patch_dir)/$$p"; \
+            done; \
+        fi
+    endef
+
+    define au_energy_config_cmds
+        cd "$(${1}_extract_dir)/${au_energy_build_subdir}" && \
+        CC="${au_energy_cc}" CXX="${au_energy_cxx}" \
+        CFLAGS="${au_energy_cflags} ${au_energy_cflags_release}" \
+        CXXFLAGS="${au_energy_cxxflags} ${au_energy_cxxflags_release}" \
+        LDFLAGS="${au_energy_ldflags}" \
+        CPPFLAGS="${au_energy_cppflags}" \
+        ${au_energy_config_env} \
+        ./configure \
+            --prefix="$(${1}_staging_prefix_dir)" \
+            ${au_energy_config_opts}
+    endef
+
+    define au_energy_build_cmds
+        cd "$(${1}_extract_dir)/${au_energy_build_subdir}" && \
+        ${au_energy_build_env} \
+        $(MAKE) ${au_energy_build_opts}
+    endef
+
+    define au_energy_stage_cmds
+        cd "$(${1}_extract_dir)/${au_energy_build_subdir}" && \
+        ${au_energy_stage_env} \
+        $(MAKE) DESTDIR="$(${1}_staging_dir)" install
+    endef
+end
