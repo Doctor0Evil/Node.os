@@ -19,6 +19,14 @@ MODULE NODE_OS_TRAFFIC_POLICY
     - AUDIT_LOG: "Compliance and audit trail data"
     - SWARM_COORDINATION: "Nanoswarm coordination signals"
 
+  ANOMALY_THRESHOLDS:
+    volume_spike_multiplier: 3.0
+    pattern_entropy_max: 0.9
+    timing_variance_max_ms: 100
+
+  DATA_CONVERSION:
+    bytes_per_gb: 1073741824
+
   RATE_LIMITS:
     TRUSTED_AFFILIATE:
       requests_per_second: 10000
@@ -272,18 +280,18 @@ MODULE NODE_OS_TRAFFIC_POLICY
       # Check for anomalies
       anomalies = []
 
-      # Volume anomaly
-      if (metrics.volume_delta > 3.0) {  # 3x normal volume
+      # Volume anomaly - volume_delta is the ratio of current volume to baseline
+      if (metrics.volume_delta > ANOMALY_THRESHOLDS.volume_spike_multiplier) {
         anomalies.append({ type: "VOLUME_SPIKE", severity: "HIGH", value: metrics.volume_delta })
       }
 
       # Pattern anomaly
-      if (metrics.pattern_entropy > 0.9) {
+      if (metrics.pattern_entropy > ANOMALY_THRESHOLDS.pattern_entropy_max) {
         anomalies.append({ type: "PATTERN_ANOMALY", severity: "MEDIUM", value: metrics.pattern_entropy })
       }
 
       # Timing anomaly
-      if (metrics.timing_variance > 100) {
+      if (metrics.timing_variance > ANOMALY_THRESHOLDS.timing_variance_max_ms) {
         anomalies.append({ type: "TIMING_ANOMALY", severity: "MEDIUM", value: metrics.timing_variance })
       }
 
@@ -331,14 +339,14 @@ MODULE NODE_OS_TRAFFIC_POLICY
           channel_id: channel.id,
           source: channel.source,
           dest: channel.dest,
-          traffic_gb: metrics.total_bytes / 1073741824,
+          traffic_gb: metrics.total_bytes / DATA_CONVERSION.bytes_per_gb,
           packets: metrics.total_packets,
           blocked: metrics.blocked_packets,
           avg_latency_ms: metrics.avg_latency,
           anomalies: metrics.anomaly_count
         })
 
-        report.summary.total_traffic_gb = report.summary.total_traffic_gb + (metrics.total_bytes / 1073741824)
+        report.summary.total_traffic_gb = report.summary.total_traffic_gb + (metrics.total_bytes / DATA_CONVERSION.bytes_per_gb)
         report.summary.total_packets = report.summary.total_packets + metrics.total_packets
         report.summary.blocked_packets = report.summary.blocked_packets + metrics.blocked_packets
         report.summary.anomalies_detected = report.summary.anomalies_detected + metrics.anomaly_count

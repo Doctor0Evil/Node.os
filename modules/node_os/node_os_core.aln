@@ -201,6 +201,34 @@ MODULE NODE_OS_CORE
       }
     }
 
+    function GetDefaultHyperParams(node_type) {
+      switch (node_type) {
+        case "VIRTUAL":
+          return {
+            max_latency_ms: HYPER_PARAMETERS.network.max_latency_ms,
+            min_throughput_mbps: HYPER_PARAMETERS.network.min_throughput_mbps,
+            encryption_standard: HYPER_PARAMETERS.security.encryption_standard,
+            session_timeout_seconds: HYPER_PARAMETERS.security.session_timeout_seconds
+          }
+        case "NEURAL_NETWORK":
+          return {
+            learning_rate: HYPER_PARAMETERS.neural.learning_rate_min,
+            batch_size: HYPER_PARAMETERS.neural.batch_size_default,
+            entropy_threshold: HYPER_PARAMETERS.neural.entropy_threshold,
+            encryption_standard: HYPER_PARAMETERS.security.encryption_standard
+          }
+        case "NANOSWARM":
+          return {
+            swarm_size: HYPER_PARAMETERS.nanoswarm.swarm_size_min,
+            coordination_frequency_hz: HYPER_PARAMETERS.nanoswarm.coordination_frequency_hz,
+            energy_budget_mw: HYPER_PARAMETERS.nanoswarm.energy_budget_mw,
+            encryption_standard: HYPER_PARAMETERS.security.encryption_standard
+          }
+        default:
+          return HYPER_PARAMETERS.network
+      }
+    }
+
     function AdjustHyperParameters(node_did, param_adjustments, requester_did) {
       # Verify requester has permission
       if (!VerifyNodeAccess(node_did, requester_did, "ADMIN")) {

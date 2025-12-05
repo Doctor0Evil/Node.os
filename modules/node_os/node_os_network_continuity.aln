@@ -15,6 +15,8 @@ MODULE NODE_OS_NETWORK_CONTINUITY
     recovery_point_objective_seconds: 60
     failover_threshold_ms: 1000
     heartbeat_interval_ms: 500
+    self_recovery_wait_ms: 1000
+    direct_probe_timeout_ms: 1000
 
   REDUNDANCY_MODES:
     - ACTIVE_ACTIVE: "Multiple nodes handle traffic simultaneously"
@@ -228,30 +230,31 @@ MODULE NODE_OS_NETWORK_CONTINUITY
     }
 
     function AttemptSelfRecovery(node_did) {
-      node = DeviceRegistry.get(node_did)
+      # Collect current metrics for recovery decisions
+      current_metrics = CollectHealthMetrics(node_did)
 
       recovery_actions = []
 
       # Try resource cleanup
-      if (node.memory_utilization > THRESHOLDS.memory_critical) {
+      if (current_metrics.memory_utilization > THRESHOLDS.memory_critical) {
         GarbageCollector.force(node_did)
         recovery_actions.append("GARBAGE_COLLECTION")
       }
 
       # Try queue flush for non-critical items
-      if (node.queue_depth > THRESHOLDS.queue_depth_critical) {
+      if (current_metrics.queue_depth > THRESHOLDS.queue_depth_critical) {
         QueueManager.flushNonCritical(node_did)
         recovery_actions.append("QUEUE_FLUSH")
       }
 
       # Try connection reset
-      if (node.error_rate > THRESHOLDS.error_rate_critical) {
+      if (current_metrics.error_rate > THRESHOLDS.error_rate_critical) {
         ConnectionManager.resetStale(node_did)
         recovery_actions.append("CONNECTION_RESET")
       }
 
       # Wait and re-evaluate
-      Sleep(1000)  # 1 second
+      Sleep(CONTINUITY_METRICS.self_recovery_wait_ms)
       new_metrics = CollectHealthMetrics(node_did)
       new_status = EvaluateHealthStatus(new_metrics)
 
@@ -324,7 +327,7 @@ MODULE NODE_OS_NETWORK_CONTINUITY
       probe_request = {
         type: "HEALTH_PROBE",
         timestamp: timestamp(),
-        timeout_ms: 1000
+        timeout_ms: CONTINUITY_METRICS.direct_probe_timeout_ms
       }
 
       response = NetworkManager.probe(node_did, probe_request)
