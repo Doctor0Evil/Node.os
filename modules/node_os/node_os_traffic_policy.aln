@@ -1,0 +1,361 @@
+MODULE NODE_OS_TRAFFIC_POLICY
+  manifest:
+    author_did: did:ion:EiD8J2b3K8k9Q8x9L7m2n4p1q5r6s7t8u9v0w1x2y3z4A5B6C7D8E9F0
+    policy: NO-PYTHON-STRICT
+    compliance: [BCI-Rights-Act, HIPAA, GDPR, MiCA, NIST80053, ISO27001]
+    timestamp: 2025-12-05T00:00:00Z
+    description: "Node.os Traffic Policy Module - Defines and enforces safe data traffic policies between affiliates, collaborators, AI-Chat platforms, and datastreams within the unified node network."
+    hash: <SHA3-512-PLACEHOLDER>
+    version: 1.0.0
+    ENERGY_OPTIMIZATION: ALN-SCHEDULER-V3
+
+  TRAFFIC_CLASSIFICATIONS:
+    - BIOSIGNAL_DATA: "Brain-computer interface and neural signal data"
+    - INFERENCE_REQUEST: "AI model inference requests"
+    - INFERENCE_RESPONSE: "AI model inference responses"
+    - CONTROL_PLANE: "Node management and coordination traffic"
+    - TELEMETRY: "Monitoring and observability data"
+    - CONSENT_EXCHANGE: "Consent verification and management"
+    - AUDIT_LOG: "Compliance and audit trail data"
+    - SWARM_COORDINATION: "Nanoswarm coordination signals"
+
+  RATE_LIMITS:
+    TRUSTED_AFFILIATE:
+      requests_per_second: 10000
+      bandwidth_mbps: 1000
+      burst_multiplier: 2.0
+    COLLABORATOR:
+      requests_per_second: 1000
+      bandwidth_mbps: 100
+      burst_multiplier: 1.5
+    PUBLIC_AI_CHAT:
+      requests_per_second: 100
+      bandwidth_mbps: 10
+      burst_multiplier: 1.2
+    DATASTREAM_CONSUMER:
+      requests_per_second: 500
+      bandwidth_mbps: 50
+      burst_multiplier: 1.3
+
+  QOS_TIERS:
+    - CRITICAL:
+        priority: 1
+        latency_guarantee_ms: 5
+        packet_loss_max: 0.0001
+        classifications: [BIOSIGNAL_DATA, CONTROL_PLANE]
+    - HIGH:
+        priority: 2
+        latency_guarantee_ms: 20
+        packet_loss_max: 0.001
+        classifications: [INFERENCE_REQUEST, INFERENCE_RESPONSE, SWARM_COORDINATION]
+    - STANDARD:
+        priority: 3
+        latency_guarantee_ms: 100
+        packet_loss_max: 0.01
+        classifications: [CONSENT_EXCHANGE, TELEMETRY]
+    - BEST_EFFORT:
+        priority: 4
+        latency_guarantee_ms: 500
+        packet_loss_max: 0.05
+        classifications: [AUDIT_LOG]
+
+  ENCRYPTION_REQUIREMENTS:
+    BIOSIGNAL_DATA:
+      algorithm: AES-256-GCM
+      key_derivation: HKDF-SHA512
+      post_quantum: CRYSTALS-KYBER-1024
+    INFERENCE_REQUEST:
+      algorithm: AES-256-GCM
+      key_derivation: HKDF-SHA256
+      post_quantum: OPTIONAL
+    CONTROL_PLANE:
+      algorithm: ChaCha20-Poly1305
+      key_derivation: HKDF-SHA512
+      post_quantum: CRYSTALS-KYBER-1024
+    DEFAULT:
+      algorithm: AES-256-GCM
+      key_derivation: HKDF-SHA256
+      post_quantum: OPTIONAL
+
+  CONSENT_REQUIREMENTS:
+    BIOSIGNAL_DATA:
+      explicit_consent: TRUE
+      informed_consent: TRUE
+      revocable: TRUE
+      audit_trail: TRUE
+    INFERENCE_REQUEST:
+      explicit_consent: TRUE
+      informed_consent: FALSE
+      revocable: TRUE
+      audit_trail: TRUE
+    TELEMETRY:
+      explicit_consent: FALSE
+      informed_consent: FALSE
+      revocable: FALSE
+      audit_trail: TRUE
+    DEFAULT:
+      explicit_consent: TRUE
+      informed_consent: TRUE
+      revocable: TRUE
+      audit_trail: TRUE
+
+  AUDIT:
+    anchor_blockchain: TRUE
+    immutable: TRUE
+    ledger: QUORUMX
+  ROLLBACK:
+    strategy: TRAFFIC_ISOLATION
+    quarantine_on_violation: TRUE
+  CONSENT:
+    lifecycle: [REQUESTED, GRANTED, REVOKED]
+    multi_party: TRUE
+  DEVICE_REGISTRY:
+    anchor_blockchain: TRUE
+
+  FUNCTIONS:
+    function EvaluateTrafficPolicy(source_node, dest_node, traffic_spec) {
+      # Get affiliate relationship
+      relationship = AffiliateRegistry.getRelationship(source_node, dest_node)
+      if (relationship == NULL) {
+        AuditLog.record("TRAFFIC_DENIED", "NO_RELATIONSHIP", source_node, dest_node)
+        return { allowed: FALSE, reason: "NO_AFFILIATE_RELATIONSHIP" }
+      }
+
+      # Get rate limits for affiliate class
+      rate_limits = RATE_LIMITS[relationship.class]
+
+      # Check rate limit
+      current_rate = TrafficMonitor.getCurrentRate(source_node, dest_node)
+      if (current_rate > rate_limits.requests_per_second * rate_limits.burst_multiplier) {
+        AuditLog.record("TRAFFIC_RATE_LIMITED", source_node, dest_node, current_rate)
+        return { allowed: FALSE, reason: "RATE_LIMIT_EXCEEDED" }
+      }
+
+      # Check bandwidth
+      current_bandwidth = TrafficMonitor.getCurrentBandwidth(source_node, dest_node)
+      if (current_bandwidth > rate_limits.bandwidth_mbps) {
+        AuditLog.record("TRAFFIC_BANDWIDTH_LIMITED", source_node, dest_node, current_bandwidth)
+        return { allowed: FALSE, reason: "BANDWIDTH_LIMIT_EXCEEDED" }
+      }
+
+      # Check encryption requirements
+      encryption_req = GetEncryptionRequirement(traffic_spec.classification)
+      if (!VerifyEncryption(traffic_spec.encryption, encryption_req)) {
+        AuditLog.record("TRAFFIC_ENCRYPTION_INSUFFICIENT", source_node, dest_node)
+        return { allowed: FALSE, reason: "ENCRYPTION_INSUFFICIENT" }
+      }
+
+      # Check consent requirements
+      consent_req = CONSENT_REQUIREMENTS[traffic_spec.classification]
+      if (consent_req == NULL) {
+        consent_req = CONSENT_REQUIREMENTS.DEFAULT
+      }
+      consent_status = VerifyConsentForTraffic(source_node, dest_node, consent_req)
+      if (!consent_status.valid) {
+        AuditLog.record("TRAFFIC_CONSENT_MISSING", source_node, dest_node)
+        return { allowed: FALSE, reason: "CONSENT_NOT_GRANTED" }
+      }
+
+      # Determine QoS tier
+      qos_tier = GetQoSTier(traffic_spec.classification)
+
+      AuditLog.record("TRAFFIC_ALLOWED", source_node, dest_node, {
+        classification: traffic_spec.classification,
+        qos_tier: qos_tier.priority
+      })
+
+      return {
+        allowed: TRUE,
+        rate_limit: rate_limits,
+        qos_tier: qos_tier,
+        encryption: encryption_req
+      }
+    }
+
+    function GetEncryptionRequirement(classification) {
+      req = ENCRYPTION_REQUIREMENTS[classification]
+      if (req == NULL) {
+        return ENCRYPTION_REQUIREMENTS.DEFAULT
+      }
+      return req
+    }
+
+    function GetQoSTier(classification) {
+      for (tier in QOS_TIERS) {
+        if (classification in tier.classifications) {
+          return tier
+        }
+      }
+      return QOS_TIERS.BEST_EFFORT
+    }
+
+    function VerifyEncryption(provided, required) {
+      # Check algorithm strength
+      if (!IsAlgorithmSufficient(provided.algorithm, required.algorithm)) {
+        return FALSE
+      }
+
+      # Check post-quantum requirement
+      if (required.post_quantum == "CRYSTALS-KYBER-1024" && !provided.post_quantum) {
+        return FALSE
+      }
+
+      return TRUE
+    }
+
+    function VerifyConsentForTraffic(source_node, dest_node, consent_req) {
+      if (!consent_req.explicit_consent && !consent_req.informed_consent) {
+        return { valid: TRUE }
+      }
+
+      # Get consent status
+      consent = ConsentManager.getDataSharingConsent(source_node, dest_node)
+
+      if (consent_req.explicit_consent && !consent.explicit) {
+        return { valid: FALSE, reason: "EXPLICIT_CONSENT_REQUIRED" }
+      }
+
+      if (consent_req.informed_consent && !consent.informed) {
+        return { valid: FALSE, reason: "INFORMED_CONSENT_REQUIRED" }
+      }
+
+      if (!consent.active) {
+        return { valid: FALSE, reason: "CONSENT_EXPIRED" }
+      }
+
+      return { valid: TRUE }
+    }
+
+    function EnforceTrafficPolicy(channel_id, traffic_packet) {
+      # Get channel details
+      channel = SecureChannelManager.get(channel_id)
+
+      # Evaluate policy
+      policy_result = EvaluateTrafficPolicy(
+        channel.source,
+        channel.dest,
+        { classification: traffic_packet.classification, encryption: traffic_packet.encryption }
+      )
+
+      if (!policy_result.allowed) {
+        # Block traffic
+        TrafficMonitor.block(channel_id, traffic_packet.id)
+        AuditLog.record("TRAFFIC_BLOCKED", channel_id, policy_result.reason)
+        return BLOCK
+      }
+
+      # Apply QoS
+      ApplyQoS(channel_id, traffic_packet, policy_result.qos_tier)
+
+      # Update metrics
+      TrafficMonitor.recordPacket(channel_id, traffic_packet)
+
+      return APPROVE
+    }
+
+    function ApplyQoS(channel_id, packet, qos_tier) {
+      # Set priority
+      PacketScheduler.setPriority(packet.id, qos_tier.priority)
+
+      # Apply latency guarantee
+      if (qos_tier.latency_guarantee_ms > 0) {
+        PacketScheduler.setLatencyTarget(packet.id, qos_tier.latency_guarantee_ms)
+      }
+
+      AuditLog.record("QOS_APPLIED", channel_id, packet.id, qos_tier.priority)
+    }
+
+    function MonitorTrafficAnomaly(channel_id) {
+      # Get traffic metrics
+      metrics = TrafficMonitor.getMetrics(channel_id)
+
+      # Check for anomalies
+      anomalies = []
+
+      # Volume anomaly
+      if (metrics.volume_delta > 3.0) {  # 3x normal volume
+        anomalies.append({ type: "VOLUME_SPIKE", severity: "HIGH", value: metrics.volume_delta })
+      }
+
+      # Pattern anomaly
+      if (metrics.pattern_entropy > 0.9) {
+        anomalies.append({ type: "PATTERN_ANOMALY", severity: "MEDIUM", value: metrics.pattern_entropy })
+      }
+
+      # Timing anomaly
+      if (metrics.timing_variance > 100) {
+        anomalies.append({ type: "TIMING_ANOMALY", severity: "MEDIUM", value: metrics.timing_variance })
+      }
+
+      if (anomalies.length > 0) {
+        # Report anomalies
+        for (anomaly in anomalies) {
+          AuditLog.record("TRAFFIC_ANOMALY", channel_id, anomaly)
+
+          if (anomaly.severity == "HIGH") {
+            # Quarantine channel
+            SecureChannelManager.quarantine(channel_id)
+            EscalationService.notify("security_team", "TRAFFIC_ANOMALY_HIGH", {
+              channel_id: channel_id,
+              anomaly: anomaly
+            })
+            return ESCALATE
+          }
+        }
+      }
+
+      return APPROVE
+    }
+
+    function GenerateTrafficReport(node_did, time_range) {
+      # Get all channels for node
+      channels = SecureChannelManager.getChannelsForNode(node_did)
+
+      report = {
+        node_did: node_did,
+        time_range: time_range,
+        generated_at: timestamp(),
+        channels: [],
+        summary: {
+          total_traffic_gb: 0,
+          total_packets: 0,
+          blocked_packets: 0,
+          anomalies_detected: 0
+        }
+      }
+
+      for (channel in channels) {
+        metrics = TrafficMonitor.getMetrics(channel.id, time_range)
+        
+        report.channels.append({
+          channel_id: channel.id,
+          source: channel.source,
+          dest: channel.dest,
+          traffic_gb: metrics.total_bytes / 1073741824,
+          packets: metrics.total_packets,
+          blocked: metrics.blocked_packets,
+          avg_latency_ms: metrics.avg_latency,
+          anomalies: metrics.anomaly_count
+        })
+
+        report.summary.total_traffic_gb = report.summary.total_traffic_gb + (metrics.total_bytes / 1073741824)
+        report.summary.total_packets = report.summary.total_packets + metrics.total_packets
+        report.summary.blocked_packets = report.summary.blocked_packets + metrics.blocked_packets
+        report.summary.anomalies_detected = report.summary.anomalies_detected + metrics.anomaly_count
+      }
+
+      # Sign report
+      report.signature = DIDService.sign(report, node_did)
+
+      AuditLog.record("TRAFFIC_REPORT_GENERATED", node_did, report.summary)
+
+      return report
+    }
+
+  compliance_hooks:
+    audit: "Log all traffic policy decisions to immutable ledger"
+    alert: "Notify on rate limit violations and anomalies"
+    rollback: "Isolate traffic channels on security violations"
+    escalation: "Escalate high-severity anomalies to security team"
+
+END NODE_OS_TRAFFIC_POLICY
