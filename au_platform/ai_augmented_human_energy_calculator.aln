@@ -1,0 +1,194 @@
+# filename: /au_platform/ai_augmented_human_energy_calculator.aln
+# format: .aln
+# destination: Unreal/Unity/Godot AU stack – AI-augmented human energy-resource engine [file:1][file:2]
+
+aln MODULE AI_AugmentedHumanEnergyCalculator
+    version "1.0.0"
+    purpose "Replace physics-only WOD calculator with an AI-augmented human / energy-resource calculator."
+
+    # -----------------------------
+    # 1. CORE DATA STRUCTURES
+    # -----------------------------
+
+    struct AU_UserState
+        user_id                 string
+        mass_kg                 float      # body mass
+        height_m                float
+        baseline_metabolic_w    float      # resting ~80–100 W typical adult [web:1]
+        cognitive_load_factor   float      # 0.0–2.0 scalar
+        physical_activity_level float      # 0.0–3.0 scalar (sedentary.. intense)
+        bci_power_w             float      # neuromorphic/BCI draw (<1 W target) [web:1]
+        device_compute_w        float      # edge+cloud allocation
+        fatigue_index           float      # 0.0–1.0
+        focus_index             float      # 0.0–1.0
+        safety_flag             bool
+    end
+
+    struct AU_ActionContext
+        action_id               string
+        engine_tick_ms          int
+        write_ops               int        # DB / state writes this tick
+        compute_ops             int        # abstract FLOP units
+        cybernetic_ops          int        # BCI / haptics events
+        ai_inference_count      int        # model calls
+        scenario_tag            string     # e.g. "throw_object", "solve_puzzle"
+    end
+
+    struct AU_EnergyBreakdown
+        total_human_w           float
+        total_cybernetic_w      float
+        total_ai_w              float
+        total_scene_w           float
+        hp_delta                float      # converted to game HP
+        cognitive_delta         float      # focus gain/loss
+        fatigue_delta           float      # fatigue gain
+        recommendation          string
+    end
+
+    # -----------------------------
+    # 2. MAIN CALCULATOR ENTRYPOINT
+    # -----------------------------
+
+    function calculate_au_energy(user: AU_UserState, ctx: AU_ActionContext) -> AU_EnergyBreakdown
+        # 2.1 Human metabolic power (simplified, per-tick). [web:1]
+        human_dynamic_w   = user.baseline_metabolic_w
+                          * (1.0 + user.physical_activity_level * 0.5)
+                          * (1.0 + user.cognitive_load_factor * 0.3)
+
+        # 2.2 Cybernetic / BCI / device draw – neuromorphic-optimized. [web:1][file:1]
+        per_write_w       = 0.0002    # W per safe write-op (edge cached)
+        per_compute_w     = 0.0003    # W per safe compute-op
+        per_cyber_op_w    = 0.0001    # W per BCI/haptic event (neuromorphic)
+        per_inference_w   = 0.0010    # W per AI inference (local equivalent)
+
+        cybernetic_w      = user.bci_power_w
+                          + ctx.write_ops          * per_write_w
+                          + ctx.compute_ops        * per_compute_w
+                          + ctx.cybernetic_ops     * per_cyber_op_w
+
+        ai_w              = ctx.ai_inference_count * per_inference_w
+
+        total_scene_w      = human_dynamic_w + cybernetic_w + ai_w
+
+        # 2.3 HP mapping (example): 100 W·s ≈ 1 HP fatigue-equivalent.
+        tick_s             = ctx.engine_tick_ms / 1000.0
+        hp_delta           = - (total_scene_w * tick_s) / 100.0
+
+        # 2.4 Cognitive and fatigue adjustment – gentle, reversible.
+        cognitive_delta    = - user.cognitive_load_factor * 0.01 * tick_s
+        fatigue_delta      =   user.physical_activity_level * 0.02 * tick_s
+
+        # 2.5 Generate adaptive recommendation.
+        rec                = generate_recommendation(user, total_scene_w, hp_delta, fatigue_delta)
+
+        result = AU_EnergyBreakdown{
+            total_human_w:      human_dynamic_w,
+            total_cybernetic_w: cybernetic_w,
+            total_ai_w:         ai_w,
+            total_scene_w:      total_scene_w,
+            hp_delta:           hp_delta,
+            cognitive_delta:    cognitive_delta,
+            fatigue_delta:      fatigue_delta,
+            recommendation:     rec
+        }
+
+        return result
+    end
+
+    # -----------------------------
+    # 3. CONTINUOUS USER ADJUSTMENT
+    # -----------------------------
+
+    function improve_connected_user(var user: AU_UserState, breakdown: AU_EnergyBreakdown)
+        # If scene load high, lower device+AI power share, preserve human. [file:2]
+        if breakdown.total_scene_w > 250.0 then
+            user.device_compute_w   = max(0.0, user.device_compute_w * 0.9)
+            user.bci_power_w        = max(0.0, user.bci_power_w * 0.95)
+            user.fatigue_index      = min(1.0, user.fatigue_index + breakdown.fatigue_delta)
+            user.focus_index        = max(0.0, user.focus_index  + breakdown.cognitive_delta)
+            user.safety_flag        = true
+        else
+            # Light load – gently enhance focus, reduce fatigue.
+            user.fatigue_index      = max(0.0, user.fatigue_index - 0.01)
+            user.focus_index        = min(1.0, user.focus_index  + 0.01)
+        end
+
+        # Clamp ranges.
+        user.fatigue_index = clamp01(user.fatigue_index)
+        user.focus_index   = clamp01(user.focus_index)
+    end
+
+    function clamp01(x: float) -> float
+        if x < 0.0 then return 0.0 end
+        if x > 1.0 then return 1.0 end
+        return x
+    end
+
+    # -----------------------------
+    # 4. RECOMMENDATION ENGINE
+    # -----------------------------
+
+    function generate_recommendation(user: AU_UserState, total_scene_w: float,
+                                     hp_delta: float, fatigue_delta: float) -> string
+        if total_scene_w > 300.0 then
+            return "Reduce AI calls and BCI feedback; schedule micro-break; shift compute to neuromorphic low-power mode."
+        elseif fatigue_delta > 0.05 then
+            return "Decrease physical intensity; keep cybernetic load constant; favor cognitive assistance instead of force."
+        elseif hp_delta > -0.5 then
+            return "Scene load nominal; safe to increase assistive AI for comfort and accessibility."
+        else
+            return "Maintain current settings; monitor human focus and fatigue for next adjustment window."
+        end
+    end
+
+    # -----------------------------
+    # 5. GAME / WORLD DEBUG OUTPUT
+    # -----------------------------
+
+    # Replacement for old physics-only debug line – now energy-centric UTF‑8.
+    function format_debug_line(user: AU_UserState, ctx: AU_ActionContext,
+                               breakdown: AU_EnergyBreakdown) -> string
+        # Example: z(player) executed action A-THROW-01: total_scene=145.3W, human=102.1W, cyber=21.4W, ai=21.8W, dHP=-0.32
+        line = "user[z:" + user.user_id + "] action[" + ctx.action_id + "] "
+             + "scene_w="    + to_string(breakdown.total_scene_w) 
+             + " human_w="   + to_string(breakdown.total_human_w)
+             + " cyber_w="   + to_string(breakdown.total_cybernetic_w)
+             + " ai_w="      + to_string(breakdown.total_ai_w)
+             + " dHP="       + to_string(breakdown.hp_delta)
+             + " focusΔ="    + to_string(breakdown.cognitive_delta)
+             + " fatigueΔ="  + to_string(breakdown.fatigue_delta)
+        return line
+    end
+
+    # -----------------------------
+    # 6. LEGACY PHYSICS CORRECTION
+    # -----------------------------
+
+    # Correct, normalized version of the example “throw object” calculation.
+    function corrected_throw_physics(
+        m_object_kg: float,
+        v_throw_mps: float,
+        impact_angle_deg: float,
+        enemy_hp: float
+    ) -> string
+        # Kinetic energy E = 0.5 m v^2 (J). [web:1]
+        E_j          = 0.5 * m_object_kg * v_throw_mps * v_throw_mps
+        # Approx force for short impact: F ≈ E / d, with d=0.05 m effective stop.
+        F_n          = E_j / 0.05
+        # HP damage mapping: 10 J ≈ 1 HP.
+        damage_hp    = E_j / 10.0
+        remaining_hp = max(0.0, enemy_hp - damage_hp)
+
+        status       = (remaining_hp <= 0.0) ? "enemy_knocked_out" : "enemy_injured"
+
+        # UTF‑8 debug string with numeric and alpha patterns.
+        out = "x(object): m=" + to_string(m_object_kg) + "kg, v=" + to_string(v_throw_mps)
+            + "m/s, angle=" + to_string(impact_angle_deg) + "deg; "
+            + "impact: F≈" + to_string(F_n) + "N, E=" + to_string(E_j) + "J; "
+            + "y(enemy): hp_start=" + to_string(enemy_hp)
+            + ", hp_loss=" + to_string(damage_hp)
+            + ", hp_end=" + to_string(remaining_hp)
+            + ", status=" + status
+        return out
+    end
+end
