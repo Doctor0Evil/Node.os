@@ -1,0 +1,182 @@
+aln MODULE AU_Docker_Compose_Stack
+    version "1.0.0"
+    purpose "Declarative ALN-spec for a Docker Compose stack that runs AU API, mock enforcement, and DID resolver with health checks for CI and local dev."  # [file:1][file:5]
+
+    struct ServicePort
+        container_port  int
+        host_port       int
+    end
+
+    struct HealthCheck
+        path            string
+        interval_sec    int
+        timeout_sec     int
+        retries         int
+        start_period_s  int
+    end
+
+    struct ServiceDef
+        name            string
+        dockerfile_path string
+        context_path    string
+        env             map[string]string
+        ports           ServicePort[]
+        depends_on      string[]
+        health          HealthCheck
+    end
+
+    const svc_did_resolver = ServiceDef{
+        name:            "did_resolver",
+        dockerfile_path: "./infra/docker/Dockerfile.did_resolver",
+        context_path:    ".",
+        env: {
+            "NODE_ENV":              "development",
+            "DID_METHODS_ENABLED":   "ion,web,key",
+            "PORT":                  "7001"
+        },
+        ports: [
+            ServicePort{ container_port: 7001, host_port: 7001 }
+        ],
+        depends_on: [],
+        health: HealthCheck{
+            path:           "/health",
+            interval_sec:   5,
+            timeout_sec:    2,
+            retries:        12,
+            start_period_s: 5
+        }
+    }
+
+    const svc_mock_enforcement = ServiceDef{
+        name:            "mock_enforcement",
+        dockerfile_path: "./infra/docker/Dockerfile.enforcement",
+        context_path:    ".",
+        env: {
+            "ENFORCEMENT_PROFILE":   "mock",
+            "PORT":                  "7002"
+        },
+        ports: [
+            ServicePort{ container_port: 7002, host_port: 7002 }
+        ],
+        depends_on: [],
+        health: HealthCheck{
+            path:           "/health",
+            interval_sec:   5,
+            timeout_sec:    2,
+            retries:        12,
+            start_period_s: 5
+        }
+    }
+
+    const svc_au_api = ServiceDef{
+        name:            "au_api",
+        dockerfile_path: "./infra/docker/Dockerfile.api",
+        context_path:    ".",
+        env: {
+            "AU_ENV":                     "docker",
+            "ENFORCEMENT_BASE_URL":       "http://mock_enforcement:7002",
+            "DID_RESOLVER_BASE_URL":      "http://did_resolver:7001",
+            "PYTHONUNBUFFERED":           "1"
+        },
+        ports: [
+            ServicePort{ container_port: 8000, host_port: 8000 }
+        ],
+        depends_on: [
+            "did_resolver",
+            "mock_enforcement"
+        ],
+        health: HealthCheck{
+            path:           "/health",
+            interval_sec:   5,
+            timeout_sec:    2,
+            retries:        24,
+            start_period_s: 10
+        }
+    }
+
+    const svc_tests = ServiceDef{
+        name:            "tests",
+        dockerfile_path: "./infra/docker/Dockerfile.api",
+        context_path:    ".",
+        env: {
+            "AU_ENV":                     "test-docker",
+            "ENFORCEMENT_BASE_URL":       "http://mock_enforcement:7002",
+            "DID_RESOLVER_BASE_URL":      "http://did_resolver:7001",
+            "PYTHONUNBUFFERED":           "1"
+        },
+        ports: [],
+        depends_on: [
+            "did_resolver",
+            "mock_enforcement",
+            "au_api"
+        ],
+        health: HealthCheck{
+            path:           "/health",
+            interval_sec:   5,
+            timeout_sec:    2,
+            retries:        3,
+            start_period_s: 5
+        }
+    }
+
+    function emit_compose_yaml() -> string
+        yaml = ""
+        yaml += "version: '3.9'\n"
+        yaml += "services:\n"
+
+        services = [svc_did_resolver, svc_mock_enforcement, svc_au_api]
+
+        for s in services do
+            yaml += "  " + s.name + ":\n"
+            yaml += "    build:\n"
+            yaml += "      context: " + s.context_path + "\n"
+            yaml += "      dockerfile: " + s.dockerfile_path + "\n"
+            if array_len(s.ports) > 0 then
+                yaml += "    ports:\n"
+                for p in s.ports do
+                    yaml += "      - \"" + to_string(p.host_port) + ":" +
+                                    to_string(p.container_port) + "\"\n"
+                end
+            end
+            if map_len(s.env) > 0 then
+                yaml += "    environment:\n"
+                for k,v in s.env do
+                    yaml += "      " + k + ": \"" + v + "\"\n"
+                end
+            end
+            if array_len(s.depends_on) > 0 then
+                yaml += "    depends_on:\n"
+                for d in s.depends_on do
+                    yaml += "      " + d + ":\n"
+                    yaml += "        condition: service_healthy\n"
+                end
+            end
+            yaml += "    healthcheck:\n"
+            yaml += "      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:" +
+                    to_string(s.ports[0].container_port) + s.health.path + "\"]\n"
+            yaml += "      interval: " + to_string(s.health.interval_sec) + "s\n"
+            yaml += "      timeout: " + to_string(s.health.timeout_sec) + "s\n"
+            yaml += "      retries: " + to_string(s.health.retries) + "\n"
+            yaml += "      start_period: " + to_string(s.health.start_period_s) + "s\n"
+        end
+
+        yaml += "  tests:\n"
+        yaml += "    build:\n"
+        yaml += "      context: " + svc_tests.context_path + "\n"
+        yaml += "      dockerfile: " + svc_tests.dockerfile_path + "\n"
+        yaml += "    environment:\n"
+        for k,v in svc_tests.env do
+            yaml += "      " + k + ": \"" + v + "\"\n"
+        end
+        yaml += "    depends_on:\n"
+        yaml += "      did_resolver:\n"
+        yaml += "        condition: service_healthy\n"
+        yaml += "      mock_enforcement:\n"
+        yaml += "        condition: service_healthy\n"
+        yaml += "      au_api:\n"
+        yaml += "        condition: service_healthy\n"
+        yaml += "    command: [\"pytest\", \"-q\"]\n"
+
+        return yaml
+    end
+end
